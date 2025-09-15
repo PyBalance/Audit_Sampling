@@ -1,0 +1,41 @@
+{
+  "主营业务收入": [
+    {
+      "population_name": "主营业务收入",
+      "account_codes": ["6001", "6002"],
+      "transaction_type": "credit",
+      "value_column": "金额"
+    }
+  ],
+  "主营业务成本": [
+    {
+      "population_name": "主营业务成本",
+      "account_codes": ["6401"],
+      "transaction_type": "debit",
+      "value_column": "金额"
+    }
+  ],
+  "存货": [
+    {
+      "population_name": "存货",
+      "account_codes": ["1403", "1405"],
+      "transaction_type": "debit",
+      "value_column": "金额"
+    }
+  ],
+  "应付账款": [
+    {
+      "population_name": "应付账款_贷方",
+      "account_codes": ["2202"],
+      "transaction_type": "credit",
+      "value_column": "金额"
+    },
+    {
+      "population_name": "应付账款_借方",
+      "account_codes": ["2202"],
+      "transaction_type": "debit",
+      "value_column": "金额"
+    }
+  ]
+}
+
