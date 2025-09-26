@@ -243,32 +243,39 @@ pub fn mus_planning(book_values: &[f64], mut opts: PlanningOptions) -> Result<Pl
         eprintln!("Warning: MUS makes no sense for your problem - sample size must exceed population items; auditing everything.");
         num_items
     } else {
-        // find i where crossing occurs
-        let mut i: u64 = 0;
-        loop {
-            let n_i = calculate_n_hyper(i, 1.0 - opts.confidence_level, opts.tolerable_error, book_value)? as f64;
-            if n_i * opts.expected_error / book_value <= i as f64 { break; }
-            i += 1;
-        }
-        let ni = calculate_n_hyper(i - 1, 1.0 - opts.confidence_level, opts.tolerable_error, book_value)? as f64;
-        let nip1 = calculate_n_hyper(i, 1.0 - opts.confidence_level, opts.tolerable_error, book_value)? as f64;
-        let denom = 1.0 / (nip1 - ni) - opts.expected_error / book_value;
-        if denom <= 0.0 { return Err(MusError::Calculation("denominator non-positive in interpolation".into())); }
-        let n_opt = ((ni / (nip1 - ni) - (i as f64 - 1.0)) / denom).ceil();
-        let mut n_opt = if n_opt < 0.0 { 0 } else { n_opt as usize };
-        if n_opt > num_items {
-            eprintln!("Warning: MUS makes no sense - n > population size; auditing everything.");
-            n_opt = num_items;
-        } else if (n_opt as f64 - (nip1 + 1.0)).abs() < f64::EPSILON {
-            n_opt = (n_opt - 1).max(0);
+        // Zero expected error: directly solve using hypergeometric without interpolation
+        if opts.expected_error == 0.0 {
+            calculate_n_hyper(0, 1.0 - opts.confidence_level, opts.tolerable_error, book_value)? as usize
         } else {
-            if (n_opt as f64) < ni || (n_opt as f64) > nip1 {
-                return Err(MusError::Calculation(format!(
-                    "n.optimal not plausible: n_opt={n_opt}, ni={ni}, nip1={nip1}"
-                )));
+            // find i where crossing occurs
+            let mut i: u64 = 0;
+            loop {
+                let n_i = calculate_n_hyper(i, 1.0 - opts.confidence_level, opts.tolerable_error, book_value)? as f64;
+                if n_i * opts.expected_error / book_value <= i as f64 { break; }
+                i += 1;
+            }
+            if i == 0 {
+                calculate_n_hyper(0, 1.0 - opts.confidence_level, opts.tolerable_error, book_value)? as usize
+            } else {
+                let ni = calculate_n_hyper(i - 1, 1.0 - opts.confidence_level, opts.tolerable_error, book_value)? as f64;
+                let nip1 = calculate_n_hyper(i, 1.0 - opts.confidence_level, opts.tolerable_error, book_value)? as f64;
+                let denom = 1.0 / (nip1 - ni) - opts.expected_error / book_value;
+                if denom <= 0.0 { return Err(MusError::Calculation("denominator non-positive in interpolation".into())); }
+                let n_opt = ((ni / (nip1 - ni) - (i as f64 - 1.0)) / denom).ceil();
+                let mut n_opt = if n_opt < 0.0 { 0 } else { n_opt as usize };
+                if n_opt > num_items {
+                    eprintln!("Warning: MUS makes no sense - n > population size; auditing everything.");
+                    n_opt = num_items;
+                } else if (n_opt as f64 - (nip1 + 1.0)).abs() < f64::EPSILON {
+                    n_opt = (n_opt - 1).max(0);
+                } else if (n_opt as f64) < ni || (n_opt as f64) > nip1 {
+                    return Err(MusError::Calculation(format!(
+                        "n.optimal not plausible: n_opt={n_opt}, ni={ni}, nip1={nip1}"
+                    )));
+                }
+                n_opt
             }
         }
-        n_opt
     };
 
     let mut n_final = max(n_optimal, opts.n_min);
