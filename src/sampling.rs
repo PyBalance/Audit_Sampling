@@ -69,6 +69,32 @@ pub struct ResolvedRule {
     pub value_column: Option<String>, // None => 按借/贷列
 }
 
+fn effective_amount_for_rule(
+    r: &Record,
+    value_col: Option<&str>,
+    debit_col: Option<&str>,
+    credit_col: Option<&str>,
+    direction: &TransactionType,
+) -> f64 {
+    if let Some(col) = value_col {
+        return r
+            .values
+            .get(col)
+            .map(|s| parse_amount(s))
+            .unwrap_or(0.0);
+    }
+    match direction {
+        TransactionType::Debit => debit_col
+            .and_then(|c| r.values.get(c))
+            .map(|s| parse_amount(s))
+            .unwrap_or(0.0),
+        TransactionType::Credit => credit_col
+            .and_then(|c| r.values.get(c))
+            .map(|s| parse_amount(s))
+            .unwrap_or(0.0),
+    }
+}
+
 pub fn build_population(
     data: &JournalData,
     period: (chrono::NaiveDate, chrono::NaiveDate),
@@ -177,6 +203,17 @@ pub fn build_population(
             _ => continue 'rows,
         }
 
+        let eff = effective_amount_for_rule(
+            r,
+            rule.value_column.as_deref(),
+            debit_col.as_deref(),
+            credit_col.as_deref(),
+            &rule.transaction_type,
+        );
+        if eff <= 0.0 {
+            continue 'rows;
+        }
+
         out.push(r.clone());
     }
     if env::var("AS_DEBUG").is_ok() {
@@ -189,21 +226,16 @@ pub fn build_population(
     out
 }
 
-fn amounts_from_population(population: &[Record], value_col: Option<&str>, debit_col: Option<&str>, credit_col: Option<&str>, direction: &TransactionType) -> Vec<f64> {
+fn amounts_from_population(
+    population: &[Record],
+    value_col: Option<&str>,
+    debit_col: Option<&str>,
+    credit_col: Option<&str>,
+    direction: &TransactionType,
+) -> Vec<f64> {
     population
         .iter()
-        .map(|r| {
-            let mut v = 0.0;
-            if let Some(col) = value_col { v = r.values.get(col).map(|s| parse_amount(s)).unwrap_or(0.0); }
-            if v == 0.0 {
-                match direction {
-                    TransactionType::Debit => if let Some(dc) = debit_col { v = r.values.get(dc).map(|s| parse_amount(s)).unwrap_or(0.0); },
-                    TransactionType::Credit => if let Some(cc) = credit_col { v = r.values.get(cc).map(|s| parse_amount(s)).unwrap_or(0.0); },
-                }
-            }
-            v.abs()
-        })
-        .filter(|&v| v > 0.0)
+        .map(|r| effective_amount_for_rule(r, value_col, debit_col, credit_col, direction))
         .collect()
 }
 
@@ -274,7 +306,21 @@ pub fn perform_mus_sampling_with_rules(population: Vec<Record>, rule: &ResolvedR
     let debit_col = crate::journal::find_debit_col(&header_probe);
     let credit_col = crate::journal::find_credit_col(&header_probe);
     let amounts = amounts_from_population(&population, rule.value_column.as_deref(), debit_col.as_deref(), credit_col.as_deref(), &rule.transaction_type);
-    if amounts.is_empty() { bail!("总体金额列为空或为0"); }
+    let total: f64 = amounts.iter().sum();
+    if !total.is_finite() || total <= 0.0 {
+        bail!("总体金额为空或非正，已跳过（可能被负数或零值剔除后为空）");
+    }
+    if verbose {
+        let ratio = if tolerable_error > 0.0 { total / tolerable_error } else { f64::INFINITY };
+        eprintln!(
+            "[MUS] population='{}' BV={:.2} TE={:.2} EE={:.2} BV/TE={:.2}",
+            rule.population_name,
+            total,
+            tolerable_error,
+            expected_error,
+            ratio
+        );
+    }
 
     // Use library planning to derive n
     use audit_sampling::{mus_planning, PlanningOptions};

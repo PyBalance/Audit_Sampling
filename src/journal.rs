@@ -162,8 +162,19 @@ pub fn find_voucher_line_col(headers: &[String]) -> Option<String> {
 }
 
 pub fn parse_amount(s: &str) -> f64 {
-    let t = s.trim().replace(",", "");
-    t.parse::<f64>().unwrap_or(0.0)
+    let mut t = s.trim().replace(",", "");
+    let has_paren = (t.starts_with('(') && t.ends_with(')'))
+        || (t.starts_with('（') && t.ends_with('）'));
+    if has_paren {
+        t = t
+            .trim_matches(|c: char| c == '(' || c == ')' || c == '（' || c == '）')
+            .to_string();
+    }
+    t = t
+        .trim_start_matches(|c: char| c == '¥' || c == '￥' || c == '$')
+        .to_string();
+    let v = t.parse::<f64>().unwrap_or(0.0);
+    if has_paren { -v } else { v }
 }
 
 pub fn parse_date_flex(s: &str) -> Option<NaiveDate> {
