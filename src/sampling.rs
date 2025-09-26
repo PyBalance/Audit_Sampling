@@ -350,8 +350,26 @@ pub fn perform_mus_sampling_with_rules(
     // Select by PPS systematic sampling using computed n
     let idxs = pps_systematic_indices(&amounts, n);
     if idxs.is_empty() { return Ok(Vec::new()); }
-    let mut out = Vec::with_capacity(idxs.len());
-    for i in idxs { out.push(population[i].clone()); }
+
+    // 去重处理：对于被多个抽样阈值命中的大额记录，只保留首次命中的索引
+    use std::collections::HashSet;
+    let mut seen: HashSet<usize> = HashSet::with_capacity(idxs.len());
+    let mut unique_idxs: Vec<usize> = Vec::with_capacity(idxs.len());
+    for i in idxs {
+        if seen.insert(i) {
+            unique_idxs.push(i);
+        }
+    }
+    if verbose && unique_idxs.len() < n {
+        eprintln!(
+            "[MUS] 去重后样本: 计划 n={} -> 实际 {}（存在大额记录被多次命中，已合并去重）",
+            n,
+            unique_idxs.len()
+        );
+    }
+
+    let mut out = Vec::with_capacity(unique_idxs.len());
+    for i in unique_idxs { out.push(population[i].clone()); }
     Ok(out)
 }
 
