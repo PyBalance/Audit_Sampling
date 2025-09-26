@@ -26,7 +26,8 @@ enum Method {
 - 两种方法：MUS（货币单元抽样）与随机抽样；\n\
 - 可按期间、报表科目与方向（借/贷）构建总体；\n\
 - 配置文件可选，所有字段均可选；不提供配置时将严格使用‘报表科目’列枚举科目；\n\
-- 输出一个 Excel，每个总体一个工作表（表名按规则或自动命名）。"
+- 输出一个 Excel，每个总体一个工作表（表名按规则或自动命名）；\n\
+- MUS 参数（低风险默认最低样本）：--confidence 0.90（90%置信，允许较高 RIA=10%，常见于低风险项目）；--risk-factor 0.0（零预期错报，显著降低样本；0.25 为典型 25% 预期错报）。"
 )] 
 struct Args {
     /// 序时账文件路径（Excel .xlsx/.xls 或 CSV）
@@ -56,9 +57,13 @@ struct Args {
     #[arg(long, value_name = "AMOUNT")]
     tolerable_misstatement: Option<f64>,
 
-    /// 风险系数（MUS）：预期错报 EE = TE × 风险系数；默认 0.25
-    #[arg(long, default_value_t = 0.25)]
+    /// 风险系数（MUS）：预期错报 EE = TE × 风险系数；默认 0.0（零预期，最低样本）；0.25 为典型值（25% 预期错报）。
+    #[arg(long, default_value_t = 0.0)]
     risk_factor: f64,
+
+    /// 置信水平（MUS）：默认 0.90（90%，允许 RIA=10%，样本更少）；0.95 适用于高可靠性要求。
+    #[arg(long, default_value_t = 0.90)]
+    confidence: f64,
 
     /// 抽样数量（随机）：仅 random 方法需要；size>0
     #[arg(long, value_name = "N")] 
@@ -110,6 +115,9 @@ fn main() -> Result<()> {
         Method::Mus => {
             if args.materiality.is_none() && args.tolerable_misstatement.is_none() {
                 bail!("MUS 方法需要提供 --materiality 或 --tolerable-misstatement 之一");
+            }
+            if args.confidence <= 0.0 || args.confidence >= 1.0 {
+                bail!("MUS 方法要求 --confidence 介于 0 与 1 之间（例如 0.90 或 0.95）");
             }
         }
         Method::Random => {
@@ -252,7 +260,7 @@ fn main() -> Result<()> {
                 Method::Mus => {
                     let te = args.tolerable_misstatement.or(args.materiality).expect("validated");
                     let ee = te * args.risk_factor;
-                    perform_mus_sampling_with_rules(population, &rrule, te, ee, args.verbose)
+                    perform_mus_sampling_with_rules(population, &rrule, te, ee, args.confidence, args.verbose)
                         .with_context(|| format!("MUS 抽样失败: {}", rrule.population_name))?
                 }
                 Method::Random => {
@@ -272,7 +280,7 @@ fn main() -> Result<()> {
     let note = match args.method {
         Method::Mus => {
             let te = args.tolerable_misstatement.or(args.materiality).unwrap_or(0.0);
-            format!("TE={:.2}, risk={}", te, args.risk_factor)
+            format!("TE={:.2}, risk={:.2}, conf={:.2}", te, args.risk_factor, args.confidence)
         }
         Method::Random => {
             format!("size={}", args.size.unwrap_or(0))

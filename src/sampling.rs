@@ -297,7 +297,14 @@ where
     }
 }
 
-pub fn perform_mus_sampling_with_rules(population: Vec<Record>, rule: &ResolvedRule, tolerable_error: f64, expected_error: f64, verbose: bool) -> Result<Vec<Record>> {
+pub fn perform_mus_sampling_with_rules(
+    population: Vec<Record>,
+    rule: &ResolvedRule,
+    tolerable_error: f64,
+    expected_error: f64,
+    confidence: f64,
+    verbose: bool,
+) -> Result<Vec<Record>> {
     // Amounts (with fallback to debit/credit columns if value_column not present)
     let header_probe: Vec<String> = population
         .get(0)
@@ -313,11 +320,12 @@ pub fn perform_mus_sampling_with_rules(population: Vec<Record>, rule: &ResolvedR
     if verbose {
         let ratio = if tolerable_error > 0.0 { total / tolerable_error } else { f64::INFINITY };
         eprintln!(
-            "[MUS] population='{}' BV={:.2} TE={:.2} EE={:.2} BV/TE={:.2}",
+            "[MUS] population='{}' BV={:.2} TE={:.2} EE={:.2} Conf={:.2} BV/TE={:.2}",
             rule.population_name,
             total,
             tolerable_error,
             expected_error,
+            confidence,
             ratio
         );
     }
@@ -326,6 +334,7 @@ pub fn perform_mus_sampling_with_rules(population: Vec<Record>, rule: &ResolvedR
     use audit_sampling::{mus_planning, PlanningOptions};
     let opts = PlanningOptions {
         col_name_book_values: rule.value_column.clone().unwrap_or_else(|| "book.value".to_string()),
+        confidence_level: confidence,
         tolerable_error,
         expected_error,
         ..Default::default()

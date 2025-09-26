@@ -22,7 +22,7 @@ impl Default for PlanningOptions {
     fn default() -> Self {
         Self {
             col_name_book_values: "book.value".to_string(),
-            confidence_level: 0.95,
+            confidence_level: 0.90,
             tolerable_error: f64::NAN,
             expected_error: f64::NAN,
             n_min: 0,
